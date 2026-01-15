@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Includs - Accessibility Toolbar",
+  "version": "1.0.0",
+  "description": "An accessibility toolbar that provides text simplification, typography controls, and high-quality text-to-speech.",
+  
+  "permissions": [
+    "storage",
+    "scripting",
+    "offscreen"
+  ],
+  
+  "host_permissions": [
+    "<all_urls>",
+    "https://api.openai.com/*",
+    "https://api.elevenlabs.io/*"
+  ],
+  
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/typography.js", "content/explain.js", "content/toolbar.js", "content/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  
+  "options_page": "options/options.html",
+  
+  "action": {
+    "default_title": "Includs Accessibility Toolbar"
+  }
+}

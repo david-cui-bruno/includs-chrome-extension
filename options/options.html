@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Includs Options</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Includs Options</h1>
+      <p class="subtitle">Configure your accessibility toolbar</p>
+    </header>
+    
+    <main class="main">
+      
+      <!-- OpenAI Configuration -->
+      <section class="card">
+        <div class="card-header">
+          <h2>
+            <span class="card-icon">🤖</span>
+            OpenAI Configuration
+          </h2>
+          <p class="card-description">For the Explain feature - simplifies selected text</p>
+        </div>
+        
+        <div class="card-body">
+          <div class="form-group">
+            <label for="openai-key">API Key</label>
+            <div class="input-with-toggle">
+              <input 
+                type="password" 
+                id="openai-key" 
+                placeholder="sk-..."
+                autocomplete="off"
+              >
+              <button type="button" class="toggle-visibility" data-target="openai-key" aria-label="Toggle visibility">
+                👁️
+              </button>
+            </div>
+            <div class="status-row">
+              <span class="status" id="openai-status">
+                <span class="status-dot not-set"></span>
+                <span class="status-text">Not set</span>
+              </span>
+              <button type="button" class="btn btn-secondary" id="test-openai">Test Key</button>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="openai-endpoint">API Endpoint</label>
+            <input 
+              type="text" 
+              id="openai-endpoint" 
+              placeholder="https://api.openai.com/v1/chat/completions"
+              value="https://api.openai.com/v1/chat/completions"
+            >
+            <span class="hint">Change only if using a custom endpoint</span>
+          </div>
+          
+          <div class="form-group">
+            <label for="openai-model">Model</label>
+            <input 
+              type="text" 
+              id="openai-model" 
+              placeholder="gpt-4o-mini"
+              value="gpt-4o-mini"
+            >
+            <span class="hint">e.g., gpt-4o-mini, gpt-4o, gpt-3.5-turbo</span>
+          </div>
+          
+          <div class="form-group">
+            <label for="explain-mode">Explain Mode</label>
+            <select id="explain-mode">
+              <option value="simple">Simple (6th grade level)</option>
+              <option value="very_simple">Very Simple (for kids)</option>
+              <option value="bullets">Bullet Points</option>
+            </select>
+          </div>
+        </div>
+      </section>
+      
+      <!-- ElevenLabs Configuration -->
+      <section class="card">
+        <div class="card-header">
+          <h2>
+            <span class="card-icon">🔊</span>
+            ElevenLabs Configuration
+          </h2>
+          <p class="card-description">For Read Aloud - high-quality text-to-speech</p>
+        </div>
+        
+        <div class="card-body">
+          <div class="form-group">
+            <label for="elevenlabs-key">API Key</label>
+            <div class="input-with-toggle">
+              <input 
+                type="password" 
+                id="elevenlabs-key" 
+                placeholder="Your ElevenLabs API key"
+                autocomplete="off"
+              >
+              <button type="button" class="toggle-visibility" data-target="elevenlabs-key" aria-label="Toggle visibility">
+                👁️
+              </button>
+            </div>
+            <div class="status-row">
+              <span class="status" id="elevenlabs-status">
+                <span class="status-dot not-set"></span>
+                <span class="status-text">Not set</span>
+              </span>
+              <button type="button" class="btn btn-secondary" id="test-elevenlabs">Test Key</button>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="elevenlabs-voice">Voice</label>
+            <select id="elevenlabs-voice" disabled>
+              <option value="">Enter API key to load voices</option>
+            </select>
+            <button type="button" class="btn btn-secondary btn-small" id="preview-voice" disabled>
+              ▶️ Preview
+            </button>
+          </div>
+          
+          <div class="form-group">
+            <label>Default Speed</label>
+            <div class="speed-options">
+              <label class="radio-option">
+                <input type="radio" name="tts-speed" value="slow">
+                <span>🐢 Slow</span>
+              </label>
+              <label class="radio-option">
+                <input type="radio" name="tts-speed" value="normal" checked>
+                <span>▶️ Normal</span>
+              </label>
+              <label class="radio-option">
+                <input type="radio" name="tts-speed" value="fast">
+                <span>🐇 Fast</span>
+              </label>
+            </div>
+          </div>
+          
+          <div class="info-box">
+            <span class="info-icon">💡</span>
+            <span>ElevenLabs costs ~$0.30 per 1M characters. <a href="https://elevenlabs.io/pricing" target="_blank">View pricing</a></span>
+          </div>
+        </div>
+      </section>
+      
+      <!-- Typography Defaults -->
+      <section class="card">
+        <div class="card-header">
+          <h2>
+            <span class="card-icon">🔤</span>
+            Typography Defaults
+          </h2>
+          <p class="card-description">Default text size and spacing settings</p>
+        </div>
+        
+        <div class="card-body">
+          <div class="form-group">
+            <label>Default Font Scale</label>
+            <div class="slider-group">
+              <input type="range" id="font-scale" min="0.8" max="2" step="0.1" value="1">
+              <span class="slider-value" id="font-scale-value">100%</span>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label>Default Line Height</label>
+            <div class="slider-group">
+              <input type="range" id="line-height" min="1" max="2.5" step="0.1" value="1.5">
+              <span class="slider-value" id="line-height-value">1.5</span>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <!-- General Settings -->
+      <section class="card">
+        <div class="card-header">
+          <h2>
+            <span class="card-icon">⚙️</span>
+            General Settings
+          </h2>
+        </div>
+        
+        <div class="card-body">
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="enabled-by-default" checked>
+              <span>Enable toolbar on all sites by default</span>
+            </label>
+          </div>
+          
+          <div class="form-group">
+            <label for="toolbar-position">Toolbar Position</label>
+            <select id="toolbar-position">
+              <option value="right">Right side</option>
+              <option value="left">Left side</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="help-tips-enabled" checked>
+              <span>Show help tips</span>
+            </label>
+          </div>
+        </div>
+      </section>
+      
+      <!-- Actions -->
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="save-settings">
+          Save Settings
+        </button>
+        <button type="button" class="btn btn-danger" id="reset-settings">
+          Reset to Defaults
+        </button>
+      </div>
+      
+      <div class="save-status" id="save-status"></div>
+      
+    </main>
+    
+    <footer class="footer">
+      <p>Includs v1.0.0 • <a href="#" id="open-onboarding">View Onboarding</a></p>
+    </footer>
+  </div>
+  
+  <script src="options.js"></script>
+</body>
+</html>

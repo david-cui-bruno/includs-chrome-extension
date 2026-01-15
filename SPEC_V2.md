@@ -112,7 +112,10 @@ A Manifest V3 Chrome extension that injects a consistent floating right-side acc
 
 ### Host Permissions
 
-- **Approach:** `<all_urls>` (works everywhere automatically)
+- **Page access:** `<all_urls>` (works everywhere automatically)
+- **API access:** 
+  - `https://api.openai.com/*` (for Explain feature)
+  - `https://api.elevenlabs.io/*` (for TTS feature)
 - **Rationale:** Simpler UX, works immediately on all sites
 - **Note:** Users can disable per-site via toolbar toggle
 
@@ -269,10 +272,13 @@ Apply CSS variables and injected stylesheet via `chrome.scripting.insertCSS()` (
 
 ### Flow
 
-1. User selects text OR clicks "Explain paragraph" (detects current paragraph at cursor)
+1. User selects text OR clicks "Explain paragraph" (detects paragraph under mouse)
 2. Content script extracts text:
-   - Selection: `window.getSelection().toString().trim()`
-   - Paragraph: Detect paragraph element containing cursor position
+   - **Selection mode:** `window.getSelection().toString().trim()`
+   - **Paragraph mode:** Detect paragraph element under mouse pointer using `document.elementFromPoint()`
+     - Traverse up to nearest block element (`<p>`, `<div>`, `<article>`, `<section>`, `<li>`)
+     - Extract `.innerText` from that element
+     - If no suitable element found, show tooltip "No paragraph detected"
    - Validate length (see section 7.4)
 3. User clicks "Explain"
 4. Content script makes direct API call to OpenAI:
@@ -438,24 +444,28 @@ function validateSelection(text) {
 ```
 Content Script                Service Worker              Offscreen Document
      │                              │                            │
-     │  TTS_SPEAK { text, voice }   │                            │
+     │  TTS_SPEAK { text, voice,    │                            │
+     │              speed, apiKey } │                            │
      │ ────────────────────────────>│                            │
      │                              │                            │
-     │                    fetch(elevenlabs.io/text-to-speech)    │
-     │                              │                            │
-     │                              │  (audio blob received)     │
-     │                              │                            │
-     │                              │  PLAY_AUDIO { blobUrl }    │
+     │                              │  TTS_SPEAK { text, ... }   │
      │                              │ ──────────────────────────>│
      │                              │                            │
-     │                              │            Audio.play()    │
+     │                              │     fetch(elevenlabs.io)   │
+     │                              │     → audio blob received  │
+     │                              │     → Audio.play()         │
      │                              │                            │
      │  TTS_EVENT { type: 'start' } │                            │
-     │ <────────────────────────────│                            │
+     │ <────────────────────────────│<───────────────────────────│
      │                              │                            │
      │  TTS_EVENT { type: 'end' }   │                            │
-     │ <────────────────────────────│                            │
+     │ <────────────────────────────│<───────────────────────────│
 ```
+
+**Why this architecture:**
+- Offscreen document fetches audio directly from ElevenLabs (avoids blob URL context issues)
+- Service worker acts as a relay (content scripts can't message offscreen directly)
+- Offscreen document has DOM context required for Audio element playback
 
 ### ElevenLabs API Integration
 
@@ -474,7 +484,7 @@ Content Script                Service Worker              Offscreen Document
 ```javascript
 {
   "text": "Text to speak",
-  "model_id": "eleven_monolingual_v1",  // or eleven_multilingual_v2
+  "model_id": "eleven_turbo_v2_5",  // Default: fast + good quality
   "voice_settings": {
     "stability": 0.5,
     "similarity_boost": 0.75,
@@ -512,27 +522,78 @@ Content Script                Service Worker              Offscreen Document
 **Implementation:**
 ```javascript
 // In service worker
-async function playAudio(audioBlob) {
-  await chrome.offscreen.createDocument({
-    url: 'offscreen/offscreen.html',
-    reasons: ['AUDIO_PLAYBACK'],
-    justification: 'Play ElevenLabs TTS audio'
-  });
+async function speakText(text, voiceId, speed, apiKey) {
+  // Ensure offscreen document exists
+  const hasDoc = await chrome.offscreen.hasDocument();
+  if (!hasDoc) {
+    await chrome.offscreen.createDocument({
+      url: 'offscreen/offscreen.html',
+      reasons: ['AUDIO_PLAYBACK'],
+      justification: 'Play ElevenLabs TTS audio'
+    });
+  }
   
-  const blobUrl = URL.createObjectURL(audioBlob);
-  chrome.runtime.sendMessage({ type: 'PLAY_AUDIO', blobUrl });
+  // Relay to offscreen document (which will fetch + play)
+  chrome.runtime.sendMessage({ 
+    type: 'TTS_SPEAK', 
+    text, 
+    voiceId, 
+    speed, 
+    apiKey 
+  });
 }
 
 // In offscreen.js
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === 'PLAY_AUDIO') {
-    const audio = new Audio(msg.blobUrl);
-    audio.onended = () => {
+let currentAudio = null;
+
+chrome.runtime.onMessage.addListener(async (msg) => {
+  if (msg.type === 'TTS_SPEAK') {
+    // Fetch audio from ElevenLabs
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${msg.voiceId}`,
+      {
+        method: 'POST',
+        headers: {
+          'xi-api-key': msg.apiKey,
+          'Content-Type': 'application/json',
+          'Accept': 'audio/mpeg'
+        },
+        body: JSON.stringify({
+          text: msg.text,
+          model_id: 'eleven_turbo_v2_5',
+          voice_settings: { stability: 0.5, similarity_boost: 0.75, speed: msg.speed }
+        })
+      }
+    );
+    
+    const audioBlob = await response.blob();
+    const blobUrl = URL.createObjectURL(audioBlob);
+    
+    currentAudio = new Audio(blobUrl);
+    currentAudio.onended = () => {
       chrome.runtime.sendMessage({ type: 'TTS_EVENT', event: 'end' });
-      URL.revokeObjectURL(msg.blobUrl);
+      URL.revokeObjectURL(blobUrl);
+      currentAudio = null;
     };
-    audio.play();
+    currentAudio.play();
     chrome.runtime.sendMessage({ type: 'TTS_EVENT', event: 'start' });
+  }
+  
+  if (msg.type === 'TTS_PAUSE' && currentAudio) {
+    currentAudio.pause();
+    chrome.runtime.sendMessage({ type: 'TTS_EVENT', event: 'paused' });
+  }
+  
+  if (msg.type === 'TTS_RESUME' && currentAudio) {
+    currentAudio.play();
+    chrome.runtime.sendMessage({ type: 'TTS_EVENT', event: 'resumed' });
+  }
+  
+  if (msg.type === 'TTS_STOP' && currentAudio) {
+    currentAudio.pause();
+    currentAudio.src = '';
+    currentAudio = null;
+    chrome.runtime.sendMessage({ type: 'TTS_EVENT', event: 'stopped' });
   }
 });
 ```
@@ -552,8 +613,9 @@ chrome.runtime.onMessage.addListener((msg) => {
 
 ### "Read this page" Text Source
 
-- Use readability extraction to get main content
-- Fallback: visible text nodes within main content heuristics
+- Use `document.body.innerText` for simplicity (MVP approach)
+- May include navigation/footer text — acceptable tradeoff for MVP
+- Future enhancement (v2+): Use readability extraction for cleaner main content
 
 ### Text Length Limits for TTS
 
@@ -562,9 +624,19 @@ chrome.runtime.onMessage.addListener((msg) => {
 - **Maximum:** 5,000 characters (API limit + cost control)
 
 **"Read Page":**
-- Split into chunks of ~2,500 characters
-- Play sequentially with brief pauses between chunks
-- Use readability extraction to get main content only
+- Split into chunks of ~2,500 characters at sentence boundaries
+- **Chunking strategy:**
+  - Split on sentence-ending punctuation (. ! ?)
+  - Ensure chunks don't exceed ~2,500 characters
+  - Keep sentences intact (don't split mid-sentence)
+- **Playback:**
+  - Play chunks sequentially
+  - Brief pause (~500ms) between chunks
+  - Show progress indicator: "Reading chunk 2 of 5"
+- **Stop handling:**
+  - User can stop at any time
+  - Stops current chunk and discards remaining chunks
+- Use `document.body.innerText` to get page content
 
 ### ElevenLabs Configuration (Options Page)
 
@@ -736,11 +808,12 @@ function announce(message) {
 - `EXPLAIN_REQUEST` → `EXPLAIN_RESPONSE` (includes error handling)
 
 **TTS (ElevenLabs):**
-- `TTS_SPEAK` → `TTS_STARTED` (content → background → offscreen → play audio)
-- `TTS_STOP` → `TTS_STOPPED`
+- `TTS_SPEAK` → `TTS_STARTED` (content → background → offscreen → fetch + play audio)
+- `TTS_PAUSE` → `TTS_PAUSED` (pause current audio playback)
+- `TTS_RESUME` → `TTS_RESUMED` (resume paused audio)
+- `TTS_STOP` → `TTS_STOPPED` (stop and discard audio)
 - `TTS_VOICES_REQUEST` → `TTS_VOICES_RESPONSE` (fetches from ElevenLabs API)
-- `TTS_EVENT` (from offscreen → background → content script: `start`, `end`, `error`)
-- `PLAY_AUDIO` (internal: background → offscreen document)
+- `TTS_EVENT` (from offscreen → background → content script: `start`, `end`, `paused`, `resumed`, `error`)
 
 **Error Format:**
 - All async responses include `requestId` for correlation
@@ -777,9 +850,9 @@ function announce(message) {
 ## 14) Technical Decisions Summary
 
 ### Service Worker Strategy
-- **Minimal service worker** - Only handles TTS (`chrome.tts`) and onboarding
-- All other logic (DOM, API calls, UI) in content script
-- Avoids wake-up complexity since TTS keeps worker alive during playback
+- **Minimal service worker** - Only handles TTS relay (to offscreen document) and onboarding
+- All other logic (DOM, OpenAI API calls, UI) in content script
+- ElevenLabs calls routed through offscreen document (which has DOM context for audio playback)
 
 ### Storage Strategy
 - **Split storage:** `sync` for global settings, `local` for per-site overrides, cache, API keys
@@ -800,6 +873,11 @@ function announce(message) {
 - Direct API calls from content script (no service worker relay)
 - API key stored in `local` storage (not synced)
 - Comprehensive error handling with user-friendly messages
+
+### API Call Architecture Note
+**Why OpenAI and ElevenLabs use different patterns:**
+- **OpenAI (content script):** Returns JSON text response, no special handling needed
+- **ElevenLabs (offscreen document):** Returns audio that must be played via `Audio` element, which requires a DOM context. Service workers cannot play audio, so we route through offscreen document.
 
 ---
 
